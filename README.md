@@ -1,87 +1,159 @@
-# Product Return Prediction
+# Product Return Prediction — MLOps Stack
 
-An end-to-end machine learning service that predicts which e-commerce orders are likely to be returned. Returns are one of the largest operational costs in retail: every returned order carries reverse logistics, inspection, repackaging, and refund costs, so flagging high-risk orders early is worth real money. This is an imbalanced binary classification problem (about 30% of orders are returned).
+End-to-end MLOps implementation for an e-commerce product-return classifier.
+Demonstrates CI, CD, and CT (Continuous Training) targeting Accenture MLOps Engineer requirements.
 
-## Provenance and honesty note
+---
 
-The base modelling exercise (the dataset and the original notebook skeleton) comes from a Codebasics ML course capstone. On top of that I built the parts that make it a service rather than a coursework notebook:
-
-- a SQL analytics layer (`src/sql/`) over the data, including a window-function query;
-- a reproducible training script (`src/train.py`) with decision-threshold tuning against an explicit business cost;
-- a leakage sanity check that measures how much the model leans on historical-prior features;
-- a FastAPI backend (`backend/`) that serves the model, plus a small frontend.
-
-The dataset (`dataset/returns_dataset.csv`, about 12,000 orders) is programmatically generated, not real customer data. It has a realistic return-rate imbalance and genuine signal in the features, which is enough to practise and demonstrate the full workflow, but the specific numbers below describe this synthetic dataset and would not transfer to a real one without retraining.
-
-## What the model does
-
-The pipeline engineers features (a combined support-contact count, a log-transformed price to tame a heavy right skew), imputes missing values with training-set medians, scales numeric features, and one-hot encodes categoricals. It compares four classifiers (Logistic Regression, Decision Tree, Random Forest, XGBoost), all with balanced class weights. Logistic Regression wins on F1.
-
-Test-set results at the default 0.50 threshold:
-
-| Metric    | Value |
-|-----------|-------|
-| Accuracy  | 0.856 |
-| Precision | 0.719 |
-| Recall    | 0.861 |
-| F1        | 0.784 |
-
-## Decision-threshold tuning
-
-A fixed 0.50 threshold is rarely the right operating point for an imbalanced, cost-asymmetric problem. A missed return (false negative) is more expensive than a false alarm (false positive), because a missed return lands the full reverse-logistics bill with no chance to intervene. Treating a false negative as five times the cost of a false positive, `src/train.py` sweeps the threshold and picks the one that minimises total expected cost. The cost curve is written to `artifacts/threshold_cost_curve.csv`.
-
-At the chosen threshold of 0.30, recall rises from 0.861 to 0.930 (the model now catches 93% of real returns) while precision falls to 0.614. That is the trade a business would actually make under this cost assumption. The serving code reads the tuned threshold from the model bundle, so the operating point is a stored decision, not a magic number in the code.
-
-## Leakage sanity check
-
-Two features, `product_return_rate` and `brand_return_rate`, are historical return-rate averages and the two strongest single signals in the data. A reviewer should ask whether the model is just parroting them. `src/train.py` retrains without those two features and reports the gap: F1 drops only from 0.784 to 0.773. The historical priors are additive, not load-bearing. Most of the model's signal comes from legitimate order-level features (delayed delivery, payment method, product rating, support contacts).
-
-## SQL analytics layer
-
-`src/sql/` loads the CSV into a SQLite database and runs the analysis as real SQL a data team would run, rather than pandas dressed up as SQL:
-
-- return rate per product category, with lift versus the overall average (CTE plus a cross join);
-- return rate by payment method;
-- the riskiest brand within each category, using a `RANK() OVER (PARTITION BY ...)` window function.
-
-The payment-method query surfaces the clearest operational signal in the data: cash on delivery returns at about 50%, versus 16 to 24% for prepaid methods.
-
-## Repository layout
+## Architecture
 
 ```
-src/
-  train.py            reproducible training + threshold tuning + leakage check
-  sql/
-    load_db.py        build the SQLite database from the CSV
-    queries.py        analytics queries incl. the window function
-backend/
-  main.py             FastAPI app (/health, /model-info, /predict)
-  model.py            load, preprocess, predict
-  schemas.py          request/response models
-artifacts/
-  model_data.joblib   trained bundle (model, scaler, columns, threshold, metrics)
-  threshold_cost_curve.csv
-dataset/
-  returns_dataset.csv
-product_return_prediction.ipynb   the exploratory walkthrough
+GitHub Push
+    │
+    ▼
+GitHub Actions CI
+  ├── dvc pull (data from DagsHub)
+  ├── dvc repro (preprocess → train → evaluate)
+  ├── F1 gate (≥ 0.70 required to pass)
+  ├── dvc push (artifacts back to DagsHub)
+  └── upload model artifact
+    │
+    ▼ (on main branch, CI passes)
+GitHub Actions CD
+  └── docker build & push → Docker Hub
+
+Apache Airflow (CT)
+  └── Weekly DAG (Monday 02:00 UTC)
+        pull_data → preprocess → train → evaluate → push_artifacts
+        (DAG fails and halts at evaluate if F1 < 0.70)
 ```
 
-## How to run
+---
 
-Retrain the model and rebuild the analytics database from the project root:
+## Model Results
+
+| Model               | F1 (default) | Threshold | F1 (tuned) |
+|---------------------|-------------|-----------|------------|
+| Logistic Regression | 0.784       | 0.30      | **0.739**  |
+| XGBoost             | 0.761       | —         | —          |
+| Random Forest       | 0.748       | —         | —          |
+| Decision Tree       | 0.712       | —         | —          |
+
+Threshold tuned for a 5:1 FN:FP cost model. Logistic Regression selected as champion.
+
+---
+
+## Stack
+
+| Layer              | Tool                    |
+|--------------------|-------------------------|
+| Pipeline versioning | DVC 3.x               |
+| Experiment tracking | MLflow + DagsHub       |
+| CI/CD              | GitHub Actions          |
+| Continuous Training | Apache Airflow 2.9.3   |
+| Serving API        | FastAPI + Uvicorn       |
+| Containerisation   | Docker + Docker Compose |
+| Remote storage     | DagsHub (Git + DVC + MLflow) |
+
+---
+
+## Quick Start
+
+### 1 — Local pipeline run
 
 ```bash
-pip install numpy pandas scikit-learn xgboost joblib
-python src/train.py
-python src/sql/load_db.py
-python src/sql/queries.py
+# Install dependencies
+pip install dvc[http] mlflow scikit-learn xgboost pandas numpy joblib fastapi uvicorn pydantic
+
+# Configure DVC credentials (gitignored)
+dvc remote modify dagshub_remote --local auth basic
+dvc remote modify dagshub_remote --local user Amith-Ganta
+dvc remote modify dagshub_remote --local password <DAGSHUB_TOKEN>
+
+# Pull data and run pipeline
+dvc pull dataset/returns_dataset.csv.dvc --no-run-cache
+dvc repro
+
+# Show metrics
+dvc metrics show
 ```
 
-Serve the model:
+### 2 — Run the FastAPI serving container
 
 ```bash
-pip install fastapi uvicorn
-uvicorn backend.main:app --reload
+docker build -t product-return-api:local .
+docker run -p 8000:8000 -v $(pwd)/artifacts:/app/artifacts product-return-api:local
 ```
 
-Then POST an order to `/predict`. The `/model-info` endpoint returns the model name, metrics, feature importances, and the tuned threshold.
+API endpoints:
+- `GET /health` — health check
+- `GET /model-info` — model metrics and feature importances
+- `POST /predict` — return prediction for a single order
+
+### 3 — Start the Airflow CT stack
+
+```bash
+# Set token in environment
+export DAGSHUB_TOKEN=<your_token>
+
+# Start postgres
+docker compose -f docker-compose.airflow.yml up -d postgres
+
+# Initialise Airflow DB and create admin user (run once)
+docker compose -f docker-compose.airflow.yml up airflow-init
+
+# Start webserver and scheduler
+docker compose -f docker-compose.airflow.yml up -d airflow-webserver airflow-scheduler
+```
+
+Open http://localhost:8080 (user: `airflow`, password: `airflow`).
+
+Enable and trigger the `product_return_ct_pipeline` DAG manually to verify the CT pipeline end-to-end.
+
+---
+
+## GitHub Actions Secrets Required
+
+Add these in **Settings > Secrets and variables > Actions** for the repo:
+
+| Secret           | Value                            |
+|------------------|----------------------------------|
+| `DAGSHUB_TOKEN`  | DagsHub access token             |
+| `DOCKER_USERNAME`| Docker Hub username              |
+| `DOCKER_TOKEN`   | Docker Hub access token (not password) |
+
+---
+
+## Project Structure
+
+```
+├── .github/workflows/ci-cd.yml   # CI: dvc repro + F1 gate; CD: Docker build/push
+├── airflow/dags/ct_pipeline.py   # Weekly CT DAG (5 tasks)
+├── backend/
+│   ├── main.py                   # FastAPI app
+│   ├── model.py                  # Inference pipeline (load, preprocess, predict)
+│   └── schemas.py                # Pydantic request/response models
+├── src/
+│   ├── preprocess.py             # DVC stage 1 — clean raw CSV
+│   ├── train.py                  # DVC stage 2 — train 4 models, pick best
+│   └── evaluate.py               # DVC stage 3 — evaluate + F1 gate
+├── dataset/
+│   └── returns_dataset.csv.dvc   # DVC pointer (data lives on DagsHub)
+├── artifacts/
+│   ├── metrics.json              # DVC metrics (tracked in git)
+│   └── eval_report.json          # Full evaluation report
+├── dvc.yaml                      # Pipeline definition (3 stages)
+├── params.yaml                   # Hyperparameters and thresholds
+├── Dockerfile                    # FastAPI serving image
+└── docker-compose.airflow.yml    # Airflow + postgres + API stack
+```
+
+---
+
+## DagsHub Integration
+
+**Repository**: https://dagshub.com/Amith-Ganta/MLOPS-mlflow-DagsHub-DVC-Airflow
+
+- DVC remote stores raw data and model artifacts
+- MLflow tracking server at `https://dagshub.com/Amith-Ganta/MLOPS-mlflow-DagsHub-DVC-Airflow.mlflow`
+- Initialised via `dagshub.init()` — both endpoints active
