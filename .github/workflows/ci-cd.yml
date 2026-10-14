@@ -40,6 +40,10 @@ jobs:
       - name: Pull data from DagsHub DVC remote
         run: dvc pull dataset/returns_dataset.csv.dvc --no-run-cache
 
+      - name: Patch dvc.yaml for Linux (replace Windows venv path with 'python')
+        run: |
+          sed -i 's|C:/Users/HP/Desktop/NLP/API/GenAI_Krish_part-1-2-3/UDEMY-AGENITIC-AI-KRISH/Terraform/DVC-Project/.venv/Scripts/python.exe|python|g' dvc.yaml
+
       - name: Run DVC pipeline (preprocess → train → evaluate)
         env:
           DAGSHUB_TOKEN: ${{ secrets.DAGSHUB_TOKEN }}
