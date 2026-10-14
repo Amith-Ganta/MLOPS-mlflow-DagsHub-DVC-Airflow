@@ -39,6 +39,14 @@ Thumbs.db
 
 # Airflow
 logs/
+airflow/logs/
 airflow.db
 airflow.cfg
 webserver_config.py
+
+# MLflow local tracking
+mlruns/
+mlruns.db
+
+# Notebooks (keep in git only if explicitly needed)
+product_return_prediction.ipynb
