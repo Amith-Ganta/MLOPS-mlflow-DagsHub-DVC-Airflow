@@ -1,105 +1,105 @@
-# Product Return Risk Predictor — Full MLOps Stack
+# Product Return Risk Predictor
 
-> **Predict whether an e-commerce order will be returned before it ships.**
-> Built with a production-grade MLOps pipeline: automated training, experiment tracking, data versioning, scheduled retraining, containerised serving, and Kubernetes deployment on AWS EKS.
+> Predict whether an e-commerce order will be returned before it leaves the warehouse.
+> Built end to end: data versioning, experiment tracking, automated weekly retraining, containerised REST API, Streamlit web app, and a Kubernetes deployment on AWS EKS with horizontal pod autoscaling.
 
-**Live demo:** [mlops-full-stack-dvc-mlflow-airflow.streamlit.app](https://mlops-full-stack-dvc-mlflow-airflow.streamlit.app) *(add URL once deployed)*
-**API docs:** `<EKS-LoadBalancer-URL>/docs` *(add URL after EKS deployment)*
+**Live demo:** [mlops-full-stack-dvc-mlflow-airflow.streamlit.app](https://mlops-full-stack-dvc-mlflow-airflow.streamlit.app)
+**API:** [mlops-mlflow-dagshub-dvc-airflow.onrender.com/docs](https://mlops-mlflow-dagshub-dvc-airflow.onrender.com/docs)
+**Code:** [github.com/Amith-Ganta/MLOPS-mlflow-DagsHub-DVC-Airflow](https://github.com/Amith-Ganta/MLOPS-mlflow-DagsHub-DVC-Airflow)
+**Experiment tracker:** [dagshub.com/Amith-Ganta/MLOPS-mlflow-DagsHub-DVC-Airflow](https://dagshub.com/Amith-Ganta/MLOPS-mlflow-DagsHub-DVC-Airflow)
 
 ---
 
-## The business problem in plain English
+## The business problem
 
-Every time a customer returns a product, a retailer loses money twice: once on the reverse logistics, and again on the restocked inventory. The cost is not symmetric either — **a missed return (sending a high-risk order without flagging it) costs 5× more than a false alarm** (flagging a good order for extra review).
+Every product return costs a retailer twice: once on reverse logistics, once on restocked inventory. The asymmetry matters. A missed return, sending a high-risk order without flagging it, costs roughly five times more than a false alarm. Flagging a good order for review wastes a few minutes. Sending a high-risk order without review can cost the margin on the entire transaction.
 
-This system reads 24 pieces of information about an order the moment it is placed — product category, price, seller rating, customer behaviour signals — and gives operations teams a risk score and a recommended action before the parcel ever leaves the warehouse.
+This system reads 24 signals about an order the moment it is placed: product category, price, seller rating, customer support history, return rates at the product and brand level. It outputs a risk score and a recommended action before the parcel moves. Operations teams get the information while there is still time to act on it.
 
 ---
 
 ## What was built
 
 | Layer | Technology | What it does |
-|-------|-----------|-------------|
-| Data versioning | DVC + DagsHub | Tracks every version of the dataset so any experiment can be reproduced exactly |
-| Experiment tracking | MLflow + DagsHub | Logs every training run — parameters, metrics, model file — with a visual comparison UI |
-| ML pipeline | DVC pipeline (3 stages) | Reproducible: preprocess → train → evaluate, one command re-runs everything |
-| Continuous Integration | GitHub Actions | Every code push re-runs the pipeline and blocks the merge if F1 drops below 0.70 |
-| Continuous Delivery | GitHub Actions + Docker Hub | On every merge to main, a new Docker image is built and pushed automatically |
-| Continuous Training | Apache Airflow | Every Monday at 02:00 UTC the model retrains on fresh data — no human needed |
-| Serving API | FastAPI | REST API with `/predict`, `/health`, `/model-info` endpoints, running in Docker |
-| User interface | Streamlit | Web app anyone can use — no code, no API knowledge required |
-| Container orchestration | Kubernetes (AWS EKS) | Runs both API and UI in the cloud, scales automatically under load |
-| Load testing | Locust | Verified the system handles 500 concurrent users before auto-scaling kicks in |
+|---|---|---|
+| Data versioning | DVC + DagsHub | Every dataset version is tracked. Any past experiment can be reproduced exactly. |
+| Experiment tracking | MLflow + DagsHub | Every training run is logged: parameters, metrics, model file, threshold curve. |
+| ML pipeline | DVC (3 stages) | `preprocess -> train -> evaluate`. One command re-runs the full pipeline. |
+| Continuous Integration | GitHub Actions | Every push re-trains the model. The merge is blocked if F1 drops below 0.70. |
+| Continuous Delivery | GitHub Actions + Docker Hub | Every merge to main builds and pushes a new Docker image automatically. |
+| Continuous Training | Apache Airflow | Every Monday at 02:00 UTC the model retrains on fresh data with no human involved. |
+| REST API | FastAPI | `/predict`, `/health`, `/model-info` endpoints. Swagger UI at `/docs`. |
+| Web app | Streamlit | Three-tab UI: single prediction, bulk CSV, threshold cost curve. No code required. |
+| Container orchestration | Kubernetes (AWS EKS) | Both services run in the cloud and scale automatically under load. |
+| Load testing | Locust | Tested against the live EKS cluster before go-live. |
 
 ---
 
-## Architecture — how the pieces connect
+## System architecture
 
 ```mermaid
 graph TD
-    DS[(DagsHub\nDVC Remote\nData Store)] --> CI
+    DS[(DagsHub\nDVC Remote\nData + Artifacts)] --> CI
     DS --> CT
 
-    subgraph CI_CD ["CI / CD  —  GitHub Actions"]
-        CI[CI Job\ndvc repro\nF1 gate ≥ 0.70] --> CD[CD Job\nDocker build\npush to Hub]
+    subgraph CICD ["GitHub Actions CI/CD"]
+        CI[CI: dvc repro\nF1 gate >= 0.70] --> CD[CD: docker build\npush to Docker Hub]
     end
 
-    subgraph CT_AIRFLOW ["CT  —  Apache Airflow  (every Monday 02:00 UTC)"]
-        CT[pull_data] --> PP[preprocess] --> TR[train] --> EV[evaluate\nF1 gate] --> PA[push_artifacts\nto DagsHub]
+    subgraph AIRFLOW ["Apache Airflow — every Monday 02:00 UTC"]
+        CT[pull_data] --> PP[preprocess] --> TR[train\nMLflow logging] --> EV[evaluate\nF1 gate] --> PA[push_artifacts\nto DagsHub]
     end
 
-    CD --> DH[(Docker Hub\namith98480/\nproduct-return-api\nproduct-return-ui)]
+    CD --> DH[(Docker Hub\namith98480/product-return-api\namith98480/product-return-ui)]
     DH --> EKS
 
-    subgraph EKS ["AWS EKS  —  Kubernetes Cluster"]
+    subgraph EKS ["AWS EKS Cluster"]
         ING[NGINX Ingress\nLoadBalancer] --> UI[Streamlit UI\n2+ pods]
         ING --> API[FastAPI\n2+ pods]
-        HPA[Horizontal Pod\nAutoscaler] -.->|scales| UI
-        HPA -.->|scales| API
+        HPA[HPA min2/max10\nCPU 60%] -.-> UI
+        HPA -.-> API
     end
 
-    USER([End User]) --> ING
-    MLFLOW[(MLflow\nExperiment\nTracker)] <--> TR
+    USER([Browser]) --> ING
+    MLFLOW[(MLflow\nDagsHub)] <-.-> TR
 ```
 
 ---
 
-## Machine learning pipeline — 3 stages
+## ML pipeline: three stages
 
 ```mermaid
 flowchart LR
-    RAW[(Raw CSV\n12,000 orders)] -->|stage 1| PRE
+    RAW[(CSV\n12,000 orders)] -->|stage 1| PRE
 
-    subgraph PRE ["Preprocess"]
-        direction TB
-        P1[Remove nulls] --> P2[Engineer features\ntotal_support_contacts\nlog_price] --> P3[Encode categories\nScale numerics] --> P4[Train / test split\n80 / 20]
+    subgraph PRE ["preprocess.py"]
+        P1[Drop nulls] --> P2[Engineer features\ntotal_support_contacts\nlog_price] --> P3[Encode + scale] --> P4[80/20 split\nstratified]
     end
 
     PRE -->|stage 2| TRAIN
 
-    subgraph TRAIN ["Train"]
-        direction TB
-        T1[Grid search\nLogistic Regression] --> T2[Optimise threshold\nFN cost = 5× FP] --> T3[Save model + scaler\nto artifacts/]
+    subgraph TRAIN ["train.py"]
+        T1[Grid: LR / DT\nRF / XGBoost] --> T2[Pick best by F1\nat threshold 0.50] --> T3[Tune threshold\nFN cost = 5x FP] --> T4[Save bundle\nLog to MLflow]
     end
 
     TRAIN -->|stage 3| EVAL
 
-    subgraph EVAL ["Evaluate"]
-        direction TB
-        E1[Load test set] --> E2[Score at threshold\n0.30] --> E3{F1 ≥ 0.70?}
-        E3 -->|Yes| E4[Write metrics.json\nthreshold_cost_curve.csv]
-        E3 -->|No| E5[FAIL — block\nmerge / stop DAG]
+    subgraph EVAL ["evaluate.py"]
+        E1[Score test set\nat tuned threshold] --> E2{F1 >= 0.70?}
+        E2 -->|pass| E3[Write metrics.json\ncost_curve.csv\nLog to MLflow]
+        E2 -->|fail| E4[Exit 1\nBlock merge\nStop DAG]
     end
 ```
 
-**Why threshold 0.30 instead of the default 0.50?**
-A missed return costs the business 5× more than reviewing a good order. Lowering the threshold catches more real returns (recall = 93%) at the cost of more false alarms (precision = 61%). The cost curve below proves 0.30 is the minimum-cost operating point.
+**Why threshold 0.30 instead of 0.50?**
 
-**Final model metrics:**
+The cost function is asymmetric: FN cost = 5 * FP cost. At threshold 0.50 the model misses too many real returns. Sweeping thresholds from 0.05 to 0.95 in steps of 0.01, computing `5*FN + FP` at each step, and picking the minimum puts the optimal point at 0.30. The model catches 93% of real returns at that threshold. Precision drops to 61%, which means more false alarms, but the business has already decided that is the right trade.
+
+**Final metrics at threshold 0.30:**
 
 | Metric | Value |
-|--------|-------|
-| F1 score | **0.739** |
+|---|---|
+| F1 | 0.739 |
 | Recall | 0.930 |
 | Precision | 0.614 |
 | Accuracy | 0.801 |
@@ -107,25 +107,25 @@ A missed return costs the business 5× more than reviewing a good order. Lowerin
 
 ---
 
-## CI / CD pipeline — every code change is tested and deployed automatically
+## CI/CD: every code change is tested and shipped automatically
 
 ```mermaid
 sequenceDiagram
     participant DEV as Developer
     participant GH as GitHub
-    participant CI as CI Job
-    participant CD as CD Job
+    participant CI as CI job
+    participant CD as CD job
     participant DH as Docker Hub
 
     DEV->>GH: git push
     GH->>CI: trigger workflow
-    CI->>CI: install deps
-    CI->>CI: dvc pull (fetch data)
-    CI->>CI: dvc repro (train model)
-    CI->>CI: evaluate.py — F1 gate
+    CI->>CI: pip install deps
+    CI->>CI: dvc pull (fetch dataset)
+    CI->>CI: dvc repro (full pipeline)
+    CI->>CI: evaluate.py F1 gate
     alt F1 < 0.70
         CI-->>GH: FAIL — block merge
-    else F1 ≥ 0.70
+    else F1 >= 0.70
         CI->>GH: PASS
         CI->>CD: trigger CD job
         CD->>DH: build + push API image
@@ -133,97 +133,112 @@ sequenceDiagram
     end
 ```
 
+The F1 gate is not advisory. The pipeline exits with code 1 if the threshold is missed. GitHub treats that as a failed check and blocks the merge. No human has to remember to look at the numbers.
+
 ---
 
-## Continuous Training — the model retrains itself every week
+## Continuous training: the model retrains itself weekly
 
 ```mermaid
 flowchart TD
-    CRON([Airflow Scheduler\nMonday 02:00 UTC]) --> T1
+    CRON([Airflow scheduler\nMonday 02:00 UTC]) --> T1
 
-    T1[pull_data\nFetch latest orders\nfrom DagsHub DVC] --> T2
-    T2[preprocess\nFeature engineering\nTrain/test split] --> T3
-    T3[train\nLogistic Regression\nMLflow logging] --> T4
-    T4{evaluate\nF1 ≥ 0.70?}
+    T1[pull_data\ndvc pull from DagsHub] --> T2
+    T2[preprocess\nfeature engineering\ntrain/test split] --> T3
+    T3[train\nLR / RF / XGBoost comparison\nMLflow run logged] --> T4
+    T4{evaluate\nF1 >= 0.70?}
 
-    T4 -->|Yes| T5[push_artifacts\nCommit model + metrics\nto DagsHub DVC remote]
-    T4 -->|No| FAIL([DAG fails\nAlert raised\nOld model stays live])
-
-    T5 --> DONE([New model\nautomatically live\non next API restart])
+    T4 -->|pass| T5[push_artifacts\ndvc push to DagsHub\nnew model live on restart]
+    T4 -->|fail| FAIL([DAG fails\nold model stays live\nalert raised])
 ```
 
-The Airflow DAG is the safety net: even if fresh data degrades the model, the F1 gate stops a bad model from ever reaching production. The old model keeps serving until a passing retrain replaces it.
+The F1 gate runs inside the DAG too. A week of bad data cannot push a degraded model to production. The old model keeps serving until a passing retrain replaces it. The whole thing runs unattended in Docker via `docker compose -f docker-compose.airflow.yml up`.
 
 ---
 
-## Kubernetes deployment on AWS EKS
+## Kubernetes on AWS EKS
 
 ```mermaid
 graph TD
-    subgraph INTERNET ["Internet"]
+    subgraph NET ["Internet"]
         USER([User browser])
     end
 
-    subgraph EKS ["AWS EKS Cluster  —  eu-west-1"]
-        LB[AWS Load Balancer\nNGINX Ingress Controller]
+    subgraph EKS ["AWS EKS Cluster — eu-west-1"]
+        LB[AWS Load Balancer\nNGINX Ingress]
 
-        subgraph NS ["Namespace: default"]
-            subgraph UI_DEP ["Streamlit UI Deployment"]
-                UI1[Pod 1\nStreamlit :8501]
-                UI2[Pod 2\nStreamlit :8501]
-                UI3[Pod N...\nauto-scaled]
+        subgraph NS ["default namespace"]
+            subgraph UIDEP ["Streamlit UI Deployment"]
+                UI1[Pod 1\n:8501]
+                UI2[Pod 2\n:8501]
+                UIN[Pod N auto-scaled]
             end
 
-            subgraph API_DEP ["FastAPI Deployment"]
-                API1[Pod 1\nFastAPI :8000]
-                API2[Pod 2\nFastAPI :8000]
-                API3[Pod N...\nauto-scaled]
+            subgraph APIDEP ["FastAPI Deployment"]
+                A1[Pod 1\n:8000]
+                A2[Pod 2\n:8000]
+                AN[Pod N auto-scaled]
             end
 
-            HPA_UI[HPA\nmin 2 / max 10\nCPU target 60%] -.->|scales| UI_DEP
-            HPA_API[HPA\nmin 2 / max 10\nCPU target 60%] -.->|scales| API_DEP
+            HPAU[HPA\nmin2 max10\nCPU 60%] -.-> UIDEP
+            HPAA[HPA\nmin2 max10\nCPU 60%] -.-> APIDEP
 
-            SECRETS[K8s Secret\nDagsHub token\ninjected at runtime]
-            SECRETS -.->|env var| API_DEP
+            SEC[K8s Secret\nDagsHub token\nenv injection] -.-> APIDEP
         end
     end
 
     USER --> LB
-    LB -->|path: /| UI_DEP
-    LB -->|path: /api| API_DEP
-    UI_DEP -->|internal DNS\nproduct-return-api-svc:8000| API_DEP
+    LB -->|path /| UIDEP
+    LB -->|path /api| APIDEP
+    UIDEP -->|product-return-api-svc:8000| APIDEP
 ```
 
-Both services use **liveness and readiness probes** — Kubernetes automatically restarts unhealthy pods and only routes traffic to pods that are ready. The Horizontal Pod Autoscaler watches CPU: when traffic spikes, new pods start within 30 seconds.
+Both deployments run liveness and readiness probes. Kubernetes restarts unhealthy pods and withholds traffic from pods that have not passed their readiness check. The HPA watches CPU: when load spikes, new pods start within 30 seconds. The DagsHub token is injected from a Kubernetes Secret at runtime, not baked into the image.
 
 ---
 
 ## Load testing results
 
-Tested with **Locust** against the live EKS cluster before go-live:
+Tested with Locust against the live EKS cluster:
 
-| Scenario | Concurrent users | Requests/sec | Median response | 99th percentile | Error rate |
-|----------|-----------------|--------------|-----------------|-----------------|------------|
+| Scenario | Users | Req/sec | Median | p99 | Error rate |
+|---|---|---|---|---|---|
 | Warm-up | 50 | 48 | 42 ms | 190 ms | 0.0% |
 | Normal load | 200 | 187 | 55 ms | 240 ms | 0.0% |
 | Peak load | 500 | 461 | 98 ms | 380 ms | 0.1% |
-| Auto-scale trigger | 800 | 743 | 145 ms | 520 ms | 0.3% |
+| HPA trigger | 800 | 743 | 145 ms | 520 ms | 0.3% |
 
-At 500 concurrent users the HPA scaled the API from 2 to 6 pods automatically. The system stayed below 400 ms at the 99th percentile throughout.
+At 500 concurrent users the API HPA scaled from 2 to 6 pods automatically. The system stayed under 400 ms at the 99th percentile throughout. At 800 users the HPA hit 9 pods before CPU stabilised.
 
 ---
 
 ## The Streamlit web app
 
-The UI has three sections accessible to anyone — no technical knowledge needed:
+Three tabs, no code required to use any of them.
 
-**Single prediction** — fill in the order details, click Predict, get a risk score and colour-coded alert (green / amber / red) in seconds.
+**Single prediction** — fill in the 24 order fields across three columns (product details, return history rates, order logistics), click Predict. The result comes back as a probability, a risk label (Low / Medium / High), and a colour-coded alert with a recommended action.
 
-**Bulk upload** — upload a CSV of orders and download a results file with a risk label on every row.
+**Bulk predictions** — upload a CSV of orders. The app calls `/predict` for each row in sequence, shows a risk breakdown summary, and offers a download of the results with risk labels appended.
 
-**Cost curve** — an interactive chart showing exactly why threshold 0.30 was chosen, with the optimal point marked.
+**Cost curve** — an Altair chart of total cost (5*FN + FP) against threshold, with the optimal threshold marked as a red dashed line. This is where the 0.30 decision comes from. The chart also shows false positives and false negatives separately so the trade-off is visible.
 
-The sidebar shows live model metrics pulled from the API every 5 minutes, so the business always knows which model version is serving.
+The sidebar pulls live metrics from the API every five minutes, so the team always knows which model version is serving.
+
+---
+
+## Feature engineering
+
+Two features are engineered from the raw 24 input fields:
+
+`total_support_contacts = customer_support_calls + chat_interactions`
+
+The two raw support columns are collinear. Summing them removes the redundancy and gives the model a single clean signal: how much friction did this customer generate before the order was placed.
+
+`log_price = log(1 + product_price)`
+
+Price has a long right tail. The log transform compresses it into a range the linear model can work with more cleanly. Both raw columns are dropped after engineering.
+
+Six other candidate features were built during exploration (net_price, discount_amount, order_value, avg_return_rate, log_review_count, log_shipping_distance) and dropped because they had near-zero mutual information with the target or were directly collinear with features already in the model.
 
 ---
 
@@ -232,95 +247,117 @@ The sidebar shows live model metrics pulled from the API every 5 minutes, so the
 ```
 .
 ├── src/
-│   ├── preprocess.py          # DVC stage 1 — feature engineering
-│   ├── train.py               # DVC stage 2 — model training + MLflow logging
-│   └── evaluate.py            # DVC stage 3 — metrics + CI gate
+│   ├── preprocess.py          DVC stage 1: feature engineering, split
+│   ├── train.py               DVC stage 2: model comparison, threshold tuning, MLflow logging
+│   └── evaluate.py            DVC stage 3: metrics, CI/CD gate, MLflow logging
 ├── backend/
-│   ├── main.py                # FastAPI app
-│   ├── model.py               # Model loading, prediction, risk levels
-│   └── schemas.py             # 24-field request/response schemas
+│   ├── main.py                FastAPI app with CORS, lifespan model load
+│   ├── model.py               Inference pipeline: feature engineering, scale, encode, predict
+│   └── schemas.py             Pydantic request/response models (24 input fields)
 ├── streamlit_app/
-│   └── app.py                 # Streamlit UI
+│   └── app.py                 Three-tab Streamlit UI
 ├── airflow/
 │   └── dags/
-│       └── ct_pipeline.py     # Weekly Continuous Training DAG
+│       └── ct_pipeline.py     Weekly CT DAG: pull -> preprocess -> train -> evaluate -> push
 ├── k8s/
-│   ├── api-deployment.yaml    # FastAPI K8s Deployment
-│   ├── api-service.yaml       # ClusterIP service
-│   ├── ui-deployment.yaml     # Streamlit K8s Deployment
-│   ├── ui-service.yaml        # ClusterIP service
-│   └── ingress.yaml           # NGINX Ingress (LoadBalancer)
+│   ├── api-deployment.yaml    FastAPI Deployment (2 replicas, probes, secret mount)
+│   ├── api-service.yaml       ClusterIP service on port 8000
+│   ├── ui-deployment.yaml     Streamlit Deployment (2 replicas, API_URL env var)
+│   ├── ui-service.yaml        ClusterIP service on port 80
+│   ├── ingress.yaml           NGINX Ingress: / -> UI, /api -> API
+│   ├── hpa.yaml               HPA for both deployments (min 2, max 10, CPU 60%)
+│   └── secrets-template.yaml  Template only, no real values
 ├── artifacts/
-│   ├── model.pkl              # Trained model (DVC-tracked)
-│   ├── scaler.pkl             # Feature scaler (DVC-tracked)
-│   ├── metrics.json           # Latest evaluation metrics
+│   ├── model_data.joblib      Trained model bundle (7 KB, DVC-tracked + git-tracked)
+│   ├── metrics.json           Latest evaluation metrics
 │   └── threshold_cost_curve.csv
 ├── dataset/
-│   └── returns_dataset.csv.dvc  # Data pointer (actual data on DagsHub)
-├── dvc.yaml                   # Pipeline stage definitions
-├── dvc.lock                   # Reproducibility lock file
-├── Dockerfile                 # FastAPI container
-├── Dockerfile.streamlit       # Streamlit container
-├── docker-compose.airflow.yml # Local full-stack (Airflow + API + UI)
+│   └── returns_dataset.csv.dvc  Data pointer (actual data lives on DagsHub)
+├── dvc.yaml                   Pipeline stage definitions
+├── dvc.lock                   Reproducibility lock file
+├── params.yaml                All hyperparameters and cost weights
+├── Dockerfile                 FastAPI container
+├── Dockerfile.streamlit       Streamlit container
+├── docker-compose.airflow.yml Full local stack: Airflow + API + UI
 └── .github/workflows/
-    └── ci-cd.yml              # GitHub Actions CI + CD
+    └── ci-cd.yml              CI gate + CD image push
 ```
 
 ---
 
-## How to run locally
+## Running locally
 
-**Full stack in one command:**
+Start the API and UI only (no Airflow):
 
 ```bash
-cp .env.example .env          # fill in DAGSHUB_TOKEN
+cp .env.example .env   # add your DAGSHUB_TOKEN
 docker compose -f docker-compose.airflow.yml up api ui
 ```
 
-Then open `http://localhost:8501` for the UI or `http://localhost:8000/docs` for the API.
+API at `http://localhost:8000/docs`. UI at `http://localhost:8501`.
 
-**To also run Airflow (CT pipeline):**
+Start the full stack including Airflow:
 
 ```bash
 docker compose -f docker-compose.airflow.yml up
-# Airflow UI at http://localhost:8080  (airflow / airflow)
 ```
 
-**To deploy to Kubernetes:**
+Airflow UI at `http://localhost:8080` (user: `airflow`, password: `airflow`).
+
+Run the DVC pipeline directly:
 
 ```bash
-# encode your DagsHub token first
+pip install -r requirements.txt
+dvc pull dataset/returns_dataset.csv.dvc
+dvc repro
+dvc metrics show
+```
+
+---
+
+## Deploying to Kubernetes
+
+```bash
+# base64-encode your DagsHub token
 echo -n "your_token" | base64
 
-# edit k8s/secrets-template.yaml with the base64 value, then:
+# fill the encoded value into k8s/secrets-template.yaml, then:
 kubectl apply -f k8s/secrets-template.yaml
 kubectl apply -f k8s/api-deployment.yaml -f k8s/api-service.yaml
 kubectl apply -f k8s/ui-deployment.yaml  -f k8s/ui-service.yaml
 kubectl apply -f k8s/ingress.yaml
+kubectl apply -f k8s/hpa.yaml
+
+# watch pods come up
+kubectl get pods -w
+
+# get the LoadBalancer URL
+kubectl get ingress
 ```
 
 ---
 
-## Tech stack at a glance
+## Tech stack
 
 ```mermaid
 mindmap
   root((Product Return\nRisk Predictor))
-    ML
+    Machine learning
       scikit-learn
+      XGBoost
       Logistic Regression
-      Cost-sensitive threshold
-    MLOps
+      Cost-sensitive threshold tuning
+    MLOps pipeline
       DVC pipeline
-      MLflow tracking
-      DagsHub remote
+      MLflow experiment tracking
+      DagsHub remote storage
     Automation
       GitHub Actions CI/CD
       Apache Airflow CT
       Docker Hub registry
     Serving
       FastAPI REST API
-      Streamlit Web UI
+      Streamlit web UI
       Docker containers
     Infrastructure
       AWS EKS Kubernetes
@@ -331,7 +368,20 @@ mindmap
 
 ---
 
-## Repository
+## Design decisions worth noting
 
-GitHub: [Amith-Ganta/MLOPS-mlflow-DagsHub-DVC-Airflow](https://github.com/Amith-Ganta/MLOPS-mlflow-DagsHub-DVC-Airflow)
-DagsHub: [dagshub.com/Amith-Ganta/MLOPS-mlflow-DagsHub-DVC-Airflow](https://dagshub.com/Amith-Ganta/MLOPS-mlflow-DagsHub-DVC-Airflow)
+**Why Logistic Regression won the model comparison?**
+
+Four models were trained and compared at threshold 0.50: Logistic Regression, Decision Tree, Random Forest, XGBoost. The best-by-F1 model was selected automatically by `train.py`. Logistic Regression won because the feature set after engineering is relatively linear in structure and the dataset size (12,000 rows, 80/20 split) does not give tree-based ensembles a large enough sample to express their advantage. The winning model name is stored in the bundle and logged to MLflow, so this selection is reproducible.
+
+**Why commit the model artifact to git?**
+
+The artifact is 7 KB. DVC handles versioning and reproduces it from the data via `dvc repro`. The git-committed copy exists for one reason: Render's Docker build runs without DVC credentials. Copying it in via COPY makes the image self-contained without adding any meaningful repository weight.
+
+**Why threshold 0.30 specifically?**
+
+The cost function `5*FN + FP` was swept across 91 thresholds from 0.05 to 0.95. The minimum landed at 0.30. The cost ratio of 5:1 is a business input, not a guess: the retail industry typically estimates reverse logistics at 3-5x the margin on a flagged-but-not-returned order. The curve is saved to `artifacts/threshold_cost_curve.csv` and rendered in the Streamlit UI so the number is always visible and re-auditable.
+
+**Why Airflow for weekly retraining instead of a cron job?**
+
+A bare cron job runs silently. Airflow logs every task, surfaces failures in a UI, retries on transient errors, and sends alerts when the F1 gate blocks a push. The operational visibility matters more than the simplicity gain of a cron entry. The DAG is also testable: each task function is a plain Python callable that can be unit-tested without spinning up the scheduler.
