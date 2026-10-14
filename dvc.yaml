@@ -1,0 +1,45 @@
+stages:
+  preprocess:
+    cmd: C:/Users/HP/Desktop/NLP/API/GenAI_Krish_part-1-2-3/UDEMY-AGENITIC-AI-KRISH/Terraform/DVC-Project/.venv/Scripts/python.exe src/preprocess.py
+    deps:
+      - src/preprocess.py
+      - dataset/returns_dataset.csv
+    params:
+      - preprocess.input
+      - preprocess.output
+      - preprocess.test_size
+      - preprocess.random_state
+    outs:
+      - dataset/processed_data.csv
+
+  train:
+    cmd: C:/Users/HP/Desktop/NLP/API/GenAI_Krish_part-1-2-3/UDEMY-AGENITIC-AI-KRISH/Terraform/DVC-Project/.venv/Scripts/python.exe src/train.py
+    deps:
+      - src/train.py
+      - dataset/processed_data.csv
+    params:
+      - train.data
+      - train.model
+      - train.random_state
+      - train.n_estimators
+      - train.max_depth
+      - train.learning_rate
+      - train.cost_fn
+      - train.cost_fp
+    outs:
+      - artifacts/model_data.joblib
+    metrics:
+      - artifacts/metrics.json:
+          cache: false
+
+  evaluate:
+    cmd: C:/Users/HP/Desktop/NLP/API/GenAI_Krish_part-1-2-3/UDEMY-AGENITIC-AI-KRISH/Terraform/DVC-Project/.venv/Scripts/python.exe src/evaluate.py
+    deps:
+      - src/evaluate.py
+      - dataset/processed_data.csv
+      - artifacts/model_data.joblib
+    params:
+      - evaluate.min_f1_threshold
+    metrics:
+      - artifacts/eval_report.json:
+          cache: false

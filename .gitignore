@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# DVC - keep .dvc/ tracked but exclude local credentials
+.dvc/config.local
+.dvc/tmp/
+.dvc/cache/
+
+# Data and model artifacts tracked by DVC
+dataset/returns_dataset.csv
+dataset/processed_data.csv
+artifacts/model_data.joblib
+artifacts/threshold_cost_curve.csv
+
+# Keep metrics JSON in git (DVC metrics)
+!artifacts/metrics.json
+!artifacts/eval_report.json
+
+# SQLite
+dataset/returns.db
+dataset/cleaned_returns.csv
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Airflow
+logs/
+airflow.db
+airflow.cfg
+webserver_config.py

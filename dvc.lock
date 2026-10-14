@@ -1,0 +1,83 @@
+schema: '2.0'
+stages:
+  preprocess:
+    cmd: 
+      C:/Users/HP/Desktop/NLP/API/GenAI_Krish_part-1-2-3/UDEMY-AGENITIC-AI-KRISH/Terraform/DVC-Project/.venv/Scripts/python.exe
+      src/preprocess.py
+    deps:
+    - path: dataset/returns_dataset.csv
+      hash: md5
+      md5: 9b143a1c849e7a8e11ff211d5dca74b0
+      size: 1695914
+    - path: src/preprocess.py
+      hash: md5
+      md5: 7cbcbb10913f45341dc970fedbec4ceb
+      size: 833
+    params:
+      params.yaml:
+        preprocess.input: dataset/returns_dataset.csv
+        preprocess.output: dataset/processed_data.csv
+        preprocess.random_state: 42
+        preprocess.test_size: 0.2
+    outs:
+    - path: dataset/processed_data.csv
+      hash: md5
+      md5: d9caf2e5a7e60560f2696bfa02481dfc
+      size: 1587846
+  train:
+    cmd: 
+      C:/Users/HP/Desktop/NLP/API/GenAI_Krish_part-1-2-3/UDEMY-AGENITIC-AI-KRISH/Terraform/DVC-Project/.venv/Scripts/python.exe
+      src/train.py
+    deps:
+    - path: dataset/processed_data.csv
+      hash: md5
+      md5: d9caf2e5a7e60560f2696bfa02481dfc
+      size: 1587846
+    - path: src/train.py
+      hash: md5
+      md5: 32ebb2112df37e2329f326550016b821
+      size: 9457
+    params:
+      params.yaml:
+        train.cost_fn: 5.0
+        train.cost_fp: 1.0
+        train.data: dataset/processed_data.csv
+        train.learning_rate: 0.05
+        train.max_depth: 5
+        train.model: artifacts/model_data.joblib
+        train.n_estimators: 300
+        train.random_state: 42
+    outs:
+    - path: artifacts/metrics.json
+      hash: md5
+      md5: 719683be3c61a8bc89870836c31649fc
+      size: 197
+    - path: artifacts/model_data.joblib
+      hash: md5
+      md5: eaede6ad61e62362a200f036000f4c89
+      size: 8641
+  evaluate:
+    cmd: 
+      C:/Users/HP/Desktop/NLP/API/GenAI_Krish_part-1-2-3/UDEMY-AGENITIC-AI-KRISH/Terraform/DVC-Project/.venv/Scripts/python.exe
+      src/evaluate.py
+    deps:
+    - path: artifacts/model_data.joblib
+      hash: md5
+      md5: eaede6ad61e62362a200f036000f4c89
+      size: 8641
+    - path: dataset/processed_data.csv
+      hash: md5
+      md5: d9caf2e5a7e60560f2696bfa02481dfc
+      size: 1587846
+    - path: src/evaluate.py
+      hash: md5
+      md5: c3eff9d6fa27a7e45cdfba21d2d3c641
+      size: 4798
+    params:
+      params.yaml:
+        evaluate.min_f1_threshold: 0.7
+    outs:
+    - path: artifacts/eval_report.json
+      hash: md5
+      md5: a7d58f52e5e1c8e77a874a57307c3066
+      size: 157

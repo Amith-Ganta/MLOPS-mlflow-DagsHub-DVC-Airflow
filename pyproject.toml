@@ -1,0 +1,35 @@
+[project]
+name = "product-return-prediction"
+version = "0.1.0"
+description = "ML capstone: predict e-commerce product returns (training notebook + FastAPI serving API)."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    # Shared ML stack (used by both the notebook and the backend at inference time)
+    "pandas",
+    "numpy",
+    "scikit-learn",
+    "xgboost",
+    "joblib",
+    # Backend serving API
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.0",
+]
+
+# Notebook / analysis-only tooling. Installed by default for this teaching project (see
+# [tool.uv] default-groups). For a lean backend-only deploy, run: uv sync --no-default-groups
+[dependency-groups]
+notebook = [
+    "jupyter",
+    "ipykernel",
+    "matplotlib",
+    "seaborn",
+    "nbconvert",
+]
+
+[tool.uv]
+# This repo is an application (notebook + service), not an importable library, so uv should
+# not try to build/install the project itself.
+package = false
+default-groups = ["notebook"]
