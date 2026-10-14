@@ -16,6 +16,8 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    # Install dvc + ML packages needed by the CT pipeline tasks
+    _PIP_ADDITIONAL_REQUIREMENTS: "dvc[http] scikit-learn xgboost pandas numpy joblib mlflow dagshub"
     # DagsHub token injected into DAG tasks via Airflow Variable
     DAGSHUB_TOKEN: ${DAGSHUB_TOKEN:-}
     # Path to the project inside the container
@@ -73,6 +75,7 @@ services:
       AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
       AIRFLOW__WEBSERVER__WORKERS: "2"
       AIRFLOW__WEBSERVER__WEB_SERVER_WORKER_TIMEOUT: "300"
+      AIRFLOW__WEBSERVER__WEB_SERVER_MASTER_TIMEOUT: "300"
       DAGSHUB_TOKEN: ${DAGSHUB_TOKEN:-}
       PROJECT_PATH: /opt/airflow/project
       PYTHON_BIN: python
