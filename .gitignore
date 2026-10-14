@@ -11,15 +11,12 @@ venv/
 .dvc/tmp/
 .dvc/cache/
 
-# Data and model artifacts tracked by DVC
+# Data tracked by DVC (large, not committed)
 dataset/returns_dataset.csv
 dataset/processed_data.csv
-artifacts/model_data.joblib
-artifacts/threshold_cost_curve.csv
 
-# Keep metrics JSON in git (DVC metrics)
-!artifacts/metrics.json
-!artifacts/eval_report.json
+# Keep all artifacts in git (model is small — 7KB joblib)
+# DVC still versions them; git ensures Render/Docker builds work without DVC pull
 
 # SQLite
 dataset/returns.db
