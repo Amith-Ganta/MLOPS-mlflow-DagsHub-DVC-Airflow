@@ -1,4 +1,5 @@
 name: CI/CD Pipeline
+# Accenture MLOps stack: CI (dvc repro + F1 gate) → CD (Docker build/push)
 
 on:
   push:
