@@ -101,3 +101,13 @@ jobs:
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/product-return-api:latest
             ${{ secrets.DOCKER_USERNAME }}/product-return-api:${{ github.sha }}
+
+      - name: Build and push UI image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.streamlit
+          push: true
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/product-return-ui:latest
+            ${{ secrets.DOCKER_USERNAME }}/product-return-ui:${{ github.sha }}
