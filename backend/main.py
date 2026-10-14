@@ -7,8 +7,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from model import get_bundle, predict
-from schemas import (
+from backend.model import get_bundle, predict
+from backend.schemas import (
     FeatureImportanceItem,
     MetricItem,
     ModelInfoResponse,
