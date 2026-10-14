@@ -7,11 +7,29 @@ service DNS: http://product-return-api-svc:8000).
 
 import os
 import json
+import threading
+import time
 import requests
 import pandas as pd
 import streamlit as st
 
 API_URL = os.getenv("API_URL", "http://localhost:8001").rstrip("/")
+
+
+def _keep_alive():
+    """Ping /health every 9 minutes so Render free tier never spins down."""
+    while True:
+        time.sleep(540)
+        try:
+            requests.get(f"{API_URL}/health", timeout=10)
+        except Exception:
+            pass
+
+
+if "keep_alive_started" not in st.session_state:
+    t = threading.Thread(target=_keep_alive, daemon=True)
+    t.start()
+    st.session_state["keep_alive_started"] = True
 
 st.set_page_config(
     page_title="Product Return Risk",
@@ -24,7 +42,7 @@ st.set_page_config(
 @st.cache_data(ttl=300)
 def fetch_model_info():
     try:
-        r = requests.get(f"{API_URL}/model-info", timeout=10)
+        r = requests.get(f"{API_URL}/model-info", timeout=90)
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -32,7 +50,7 @@ def fetch_model_info():
 
 
 def call_predict(payload: dict):
-    r = requests.post(f"{API_URL}/predict", json=payload, timeout=10)
+    r = requests.post(f"{API_URL}/predict", json=payload, timeout=90)
     r.raise_for_status()
     return r.json()
 
