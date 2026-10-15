@@ -9,6 +9,18 @@
 
 ---
 
+## Key achievements
+
+- **Reduced false-negative cost by [FILL IN]%** as measured by the asymmetric cost function (FN = 5x FP) by sweeping 91 decision thresholds and selecting 0.30, lifting recall from 0.73 (default 0.50 threshold) to 0.93 on a 12,000-order dataset.
+- **Sustained sub-400 ms p99 latency at 500 concurrent users** as measured by Locust load tests on the live EKS cluster by deploying two Kubernetes Deployments with HPA (min 2, max 10 pods, CPU 60% trigger), which auto-scaled the API from 2 to 6 pods under peak load.
+- **Eliminated manual model degradation risk** as measured by a hard CI gate (GitHub Actions exits code 1 and blocks the merge on F1 below 0.70) by building a 3-stage DVC pipeline (`preprocess -> train -> evaluate`) that re-runs the full experiment on every push.
+- **Shipped zero-touch weekly retraining** as measured by unattended Monday 02:00 UTC Airflow DAG runs by orchestrating 5 pipeline tasks in Docker Compose, including a built-in F1 gate that keeps the previous model live if fresh data degrades performance.
+- **Reduced Docker image coupling to credentials** as measured by zero secrets baked into any image by injecting the DagsHub token from a Kubernetes Secret at runtime across both FastAPI and Streamlit deployments on AWS EKS.
+- **Reproduced any past experiment in one command** (`dvc repro`) as measured by a committed `dvc.lock` and DagsHub remote storage by versioning every dataset, artifact, and parameter with DVC + MLflow, logging all 4 model runs with metrics, parameters, and threshold curves.
+- **Deployed a three-tab prediction UI with no-code bulk inference** as measured by CSV upload producing downloadable risk-labelled results by building a Streamlit app that calls `/predict` per row, displays a cost-curve chart with the optimal threshold annotated, and keeps the Render free-tier API warm via a background daemon ping every 9 minutes.
+
+---
+
 ## The business problem
 
 Every product return costs a retailer twice: once on reverse logistics, once on restocked inventory. The asymmetry matters. A missed return, sending a high-risk order without flagging it, costs roughly five times more than a false alarm. Flagging a good order for review wastes a few minutes. Sending a high-risk order without review can cost the margin on the entire transaction.
